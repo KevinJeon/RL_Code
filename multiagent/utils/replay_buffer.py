@@ -2,48 +2,57 @@ import numpy as np
 
 class ReplayBuffer(object):
     def __init__(self,num_agent,num_action,num_obs,max_epi,max_epilen):
-        self.num_agent = num_agent
-        self.num_action = num_action
-        self.num_state = num_state
-        self.max_epi = max_epi
-        self.max_epilen = max_epilen
-        self.action = np.empty((self.max_epi,self.max_epilen,self.num_agent,self.num_action))
-        self.obs = np.empty((self.max_epi,self.max_epilen,self.num_agent,self.num_obs))
-        self.done = np.empty((self.max_epi,self.max_epilen,self.num_agent,1))
-        self.policy = np.empty((self.max_epi,self.max_epilen,self.num_agent,self.num_action))
-        self.reward = np.empty((self.max_epi,self.max_epilen,self.num_agent,1))
-        self.curr_step = 0
-        self.curr_epi = 0
+        self._storage = []
+        self._maxsize = int(size)
+        self._next_ind = 0
+
+    def __len__(self):
+        return len(self._storage)
+
     def clear(self):
-        self.action = np.empty((self.max_epi,self.max_epilen,self.num_agent,self.num_action))
-        self.obs = np.empty((self.max_epi,self.max_epilen,self.num_agent,self.num_obs))
-        self.done = np.empty((self.max_epi,self.max_epilen,self.num_agent,1))
-        self.policy = np.empty((self.max_epi,self.max_epilen,self.num_agent,self.num_action))
-        self.reward = np.empty((self.max_epi,self.max_epilen,self.num_agent,1))
-    def add(self,obss,actions,policies,rewards,dones):
-        for agent,obs,action,policy,reward,done in zip(range(self.num_agent),obss,actions,policies,rewards,dones):
-            self.action[self.curr_epi,self.curr_step,agent,:] = action
-            self.obs[self.curr_epi,self.curr_step,agent,:] = obs
-            self.done[self.curr_epi,self.curr_step,agent,:] = done
-            self.policy[self.curr_epi,self.curr_step,agent,:] = policy
-            self.reward[self.curr_epi,self.curr_step,agent,:] = reward
-        self.curr_step = self.curr_step + 1
-    def next_epi(self):
-        self.curr_epi = self.curr_epi + 1
-        self.curr_step = 0
-    def get_episodes(self,num_epi):
-        # check whether empty is zero or None
-        # need to reflect about random selection of episode
-        episodes = np.random.choice(range(self.max_epi),num_epi,replace=False)[0]
-        action = np.zeros((num_epi,self.max_epilen,self.num_agent,self.num_action))
-        obs = np.zeros((num_epi,self.max_epilen,self.num_agent,self.num_obs))
-        done = np.zeros((num_epi,self.max_epilen,self.num_agent,1))
-        policy = np.zeros((num_epi,self.max_epilen,self.num_agent,self.num_action))
-        reward = np.zeros((num_epi,self.max_epilen,self.num_agent,1))
-        for i,epi in enumerate(episodes):
-            action[i] = self.actions[epi]
-            obs[i] = self.obs[epi]
-            done[i] = self.done[epi]
-            policy[i] = self.policy[epi]
-            reward[i] = self.reward[epi]
-        return action,obs,done,policy,reward
+        self._storage = []
+        self._next_ind = 0
+
+    def add(self, obs, act, rew, obs_next, done):
+        data = (obs, act, rew, obs_next, done)
+
+        if self._next_ind >= len(self._storage):
+            self._storage.append(data)
+        else:
+            self._storage[self._next_ind] = data
+        self._next_ind = (self._next_ind + 1) % self._maxsize
+
+    def _encode_sample(self, indices):
+        obss, acts, rews, obss_next, dones = [], [], [], [], []
+        for i in indices:
+            data = self._storage[i]
+            obs, act, rew, obs_next, done = data
+            obss.append(np.array(obs,copy=False))
+            obss_next.append(np.array(obs_next,copy=False))
+            acts.append(np.array(act,copy=False))
+            rews.append(rew)
+            dones.append(done)
+        return np.array(obss), np.array(acts), np.array(rews), \
+            np.array(obss_next), np.array(dones)
+
+    def make_index(self, batch_size):
+        return [random.randint(0,len(self._storage) - 1) for _ in range(batch_size)]
+
+    def make_latest_index(self, batch_size):
+        ind = [(self._next_ind - 1 -i) % self._maxsize for i in range(batch_size)]
+        np.random.shuffle(ind)
+        return ind
+
+    def sample_index(self,indices):
+        return self._encode_sample(indices)
+
+    def sample(self,batch_size):
+        if batch_size > 0:
+            indices = self.make_index(batch_size)
+        else:
+            indices = range(0, len(self._storage))
+        return self._encode_sample(indices)
+
+    def collect(self):
+        return self.sample(-1)
+        
