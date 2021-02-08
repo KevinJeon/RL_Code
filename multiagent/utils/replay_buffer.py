@@ -1,11 +1,21 @@
 import numpy as np
-
-class ReplayBuffer(object):
-    def __init__(self,num_agent,num_action,num_obs,max_epi,max_epilen):
-        self._storage = []
+import tensorflow as tf
+class OffpolicyMemory(tf.Module):
+    def __init__(self, num_agent, capacity, obs_size, num_process, num_step):
+        super(OffpolicyMemory, self).__init__()
+        self.obs_size = obs_size
+        self.capcity = capacity
+        self.num_agent = num_agent
         self._maxsize = int(size)
         self._next_ind = 0
-
+        
+        # Data 
+        self.obs = tf.zeros(num_agent, num_step + 1, num_process, *obs_size)
+        self.rews = tf.zeros(num_agent, num_step, num_process, 1)
+        self.acts = tf.zeros(num_agent, num_step, num_process, num_action)
+        self.next_obs = tf.zeros(num_agent, num_step + 1, num_process, *obs_size)
+        self.mask = tf.zeros(num_agent, num_step, num_process, 1)
+        
     def __len__(self):
         return len(self._storage)
 
@@ -13,46 +23,36 @@ class ReplayBuffer(object):
         self._storage = []
         self._next_ind = 0
 
-    def add(self, obs, act, rew, obs_next, done):
-        data = (obs, act, rew, obs_next, done)
+    def add_batch(self, obs, act, rew, obs_next, mask):
+        '''
+        Input format : Tensor format
 
+        '''
+        self.obs[self.step + 1].copy_(obs)
+        self.act[self.step].copy_(act)
+        self.rew[self.step].copy_(rew)
+        self.obs_next[self.step].copy_(obs_next)
+        self.mask[self.step + 1].copy_(mask)
         if self._next_ind >= len(self._storage):
             self._storage.append(data)
         else:
             self._storage[self._next_ind] = data
         self._next_ind = (self._next_ind + 1) % self._maxsize
+        self.step (self.step + 1) % self.num_step
 
-    def _encode_sample(self, indices):
-        obss, acts, rews, obss_next, dones = [], [], [], [], []
-        for i in indices:
-            data = self._storage[i]
-            obs, act, rew, obs_next, done = data
-            obss.append(np.array(obs,copy=False))
-            obss_next.append(np.array(obs_next,copy=False))
-            acts.append(np.array(act,copy=False))
-            rews.append(rew)
-            dones.append(done)
-        return np.array(obss), np.array(acts), np.array(rews), \
-            np.array(obss_next), np.array(dones)
 
-    def make_index(self, batch_size):
-        return [random.randint(0,len(self._storage) - 1) for _ in range(batch_size)]
-
-    def make_latest_index(self, batch_size):
-        ind = [(self._next_ind - 1 -i) % self._maxsize for i in range(batch_size)]
-        np.random.shuffle(ind)
-        return ind
-
-    def sample_index(self,indices):
-        return self._encode_sample(indices)
 
     def sample(self,batch_size):
+        '''
+        Sampling Data for batch_size
+        Input : batch_size (format : int)
+        '''
         if batch_size > 0:
             indices = self.make_index(batch_size)
         else:
             indices = range(0, len(self._storage))
         return self._encode_sample(indices)
+class OnpolicyMemory(tf.Module):
+    def __init__(self, num_agent, obs_size, num_process, num_action):
+        super(OnpolicyMemory, self).__init__()
 
-    def collect(self):
-        return self.sample(-1)
-        
