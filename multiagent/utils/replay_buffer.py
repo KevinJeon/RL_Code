@@ -2,10 +2,8 @@ import numpy as np
 import random
 # Replay Memory is for 1 agent
 class OffpolicyMemory(object):
-    def __init__(self, agent_ind, capacity, obs_size, num_process, num_step):
-        self.obs_size = obs_size
-        self.capcity = capacity
-        self._maxsize = int(size)
+    def __init__(self, agent_ind, capacity):
+        self._maxsize = int(capacity)
         self._next_ind = 0
         self.agent_ind = agent_ind 
         # Data 
@@ -48,7 +46,7 @@ class OffpolicyMemory(object):
     def make_latest_index(self, batch_size):
         ind = [(self._next_ind - 1 -i) % self._maxsize for i in range(batch_size)]
         np.random.shuffle(ind)
-    return ind
+        return ind
     def sample_index(self, indices):
         return self._encode_sample(indices)
     def sample(self, batch_size):
