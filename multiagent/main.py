@@ -8,11 +8,18 @@ import numpy as np
 
 
 class RandomPolicy:
-    def __init__(self, agent_index, num_agent):
+    def __init__(self, agent_index, num_agent, batch_size):
         self.agent_index = agent_index
+        self.batch_size = batch_size
         self.memory = OffpolicyMemory(agent_index, 50000)
     def act(self, obs):
         return np.array([1, 0, 0, 0, 0, 0, 0])
+    def train(self):
+        print('-'*10+'TRAIN'+'-'*10)
+        obss, acts, rews, obss_next, masks = \
+            self.memory.sample(self.batch_size) 
+        return None
+
 def parse_args():
     parser = argparse.ArgumentParser('MARL Params')
     parser.add_argument('--num_episode', '-e', default=1000, type=int)
@@ -26,17 +33,23 @@ def main(args):
     world = scenario.make_world()
     env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
     #env.render()
-    policies = [RandomPolicy(i, env.n) for i in range(env.n)]
+    policies = [RandomPolicy(i, env.n, args.batch_size) for i in range(env.n)]
     for episode in range(args.num_episode):
         obss = env.reset()
+        step = 0
         while True:
             acts = []
             for i, policy in enumerate(policies):
                 acts.append(policy.act(obss[i]))
-            print(acts)
             obss_next, rews, masks, _ = env.step(acts)
             for i, policy in enumerate(policies):
                 policy.memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i])
+            if step % args.batch_size == 0:
+                policy.train()
+            step += 1
+            print(all(masks))
+            if all(masks):
+                break
             #env.render()
             
 

@@ -14,7 +14,7 @@ class OffpolicyMemory(object):
         return len(self._storage)
 
     def clear(self):
-        self._storage = []
+        self.storage = []
         self._next_ind = 0
 
     def add(self, obs, act, rew, obs_next, mask):
@@ -32,14 +32,14 @@ class OffpolicyMemory(object):
     def _encode_sample(self, ids):
         obss, acts, rews, obss_next, masks = [], [], [], [], []
         for ind in ids:
-            data = self.stoarge[ind]
+            data = self.storage[ind]
             obs, act, rew, obs_next, mask = data
             obss.append(np.array(obs, copy=False))
             acts.append(np.array(act, copy=False))
             rews.append(rew)
             obss_next.append(np.array(obs_next, copy=False))
             masks.append(mask)
-        return np.array(obss), np.array(acts), np.array(rews), np.array(obss_next), np.array(dones)
+        return np.array(obss), np.array(acts), np.array(rews), np.array(obss_next), np.array(masks)
 
     def make_index(self, batch_size):
         return [random.randint(0, len(self.storage) - 1) for _ in range(batch_size)]
