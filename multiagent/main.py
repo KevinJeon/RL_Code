@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument('--num_episode', '-e', default=1000, type=int)
     parser.add_argument('--batch_size', '-b', default=32, type=int)
     parser.add_argument('--env_name', '-en', default='simple_spread', type=str)
+    parser.add_argument('--max_step', '-ms', default=1000, type=int)
     return parser.parse_args()
 
 
@@ -35,6 +36,7 @@ def main(args):
     #env.render()
     policies = [RandomPolicy(i, env.n, args.batch_size) for i in range(env.n)]
     for episode in range(args.num_episode):
+        print('-'*10+'EPISODE START'+'-'*10)
         obss = env.reset()
         step = 0
         while True:
@@ -43,12 +45,19 @@ def main(args):
                 acts.append(policy.act(obss[i]))
             obss_next, rews, masks, _ = env.step(acts)
             for i, policy in enumerate(policies):
+                '''
+                obss : (18, )
+                acts : (7, )
+                rews : float
+                mask : bool
+                '''
                 policy.memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i])
             if step % args.batch_size == 0:
                 policy.train()
             step += 1
-            print(all(masks))
             if all(masks):
+                break
+            if step > args.max_step:
                 break
             #env.render()
             
