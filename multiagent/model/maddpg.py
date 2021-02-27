@@ -49,4 +49,7 @@ class MADDPG(object):
             srcs = [a.parameters(), c.paramters()]
             trgs =  [a_t.parameters(), c_t.parameters()]
             for src, trg in zip(srcs, trgs):
-                trg.parameters() = self.tau * trg.parameters() + (1 - self.tau) src.parameters()
+                trg = self.tau * trg + (1 - self.tau) * src
+    def train(self):
+        1 == 1
+        

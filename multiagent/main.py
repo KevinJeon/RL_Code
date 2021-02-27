@@ -3,6 +3,7 @@ import os, sys
 sys.path.append('../')
 from environment import MultiAgentEnv
 import scenarios as scenarios
+from model.maddpg import MADDPG
 from utils.replay_buffer import OffpolicyMemory
 import numpy as np
 
@@ -28,21 +29,23 @@ def parse_args():
     parser.add_argument('--max_step', '-ms', default=1000, type=int)
     return parser.parse_args()
 
+def get_trainer(trainer_name='maddpg'):
+    if trainer_name == 'maddpg':
+        trainer = MADDPG(num_agent, num_action)
+    return trainer
 
 def main(args):
     scenario = scenarios.load(args.env_name+'.py').Scenario()
     world = scenario.make_world()
     env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
     #env.render()
-    policies = [RandomPolicy(i, env.n, args.batch_size) for i in range(env.n)]
+    trainer = get_trainer('maddpg')
     for episode in range(args.num_episode):
         print('-'*10+'EPISODE START'+'-'*10)
         obss = env.reset()
         step = 0
         while True:
-            acts = []
-            for i, policy in enumerate(policies):
-                acts.append(policy.act(obss[i]))
+            acts = trainer.act(obss)
             obss_next, rews, masks, _ = env.step(acts)
             for i, policy in enumerate(policies):
                 '''
