@@ -37,3 +37,16 @@ class MADDPG(object):
             if self.cuda:
                 self.policies[i] = self.policies[i].cuda()
                 self.critics[i] = self.critics[i].cuda()
+    
+    def act(self, observations):
+        pis = []
+        for i in range(self.num_agent):
+            pi = self.policies_t[i](observations[i])
+            self.pis.append(pi.detach().numpy())
+        return pis
+    def update(self):
+        for a, a_t, c, c_t in zip(self.policies, self.policies_t, self.critics, self.critics_t):
+            srcs = [a.parameters(), c.paramters()]
+            trgs =  [a_t.parameters(), c_t.parameters()]
+            for src, trg in zip(srcs, trgs):
+                trg.parameters() = self.tau * trg.parameters() + (1 - self.tau) src.parameters()
