@@ -5,7 +5,7 @@ Original Particle environment is https://github.com/openai/multiagent-particle-e
 TODO(3/3)
 ===================
 
-- [] Make Cleaner Code with Figure
-- [] Finish MADDPG Trainer
-- [] Finish Evaluation Code to Experiment Decentralized Agents
-- [] Start COMA  
+- [ ] Make Cleaner Code with Figure
+- [ ] Finish MADDPG Trainer
+- [ ] Finish Evaluation Code to Experiment Decentralized Agents
+- [ ] Start COMA  
