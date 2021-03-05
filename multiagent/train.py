@@ -29,9 +29,9 @@ def parse_args():
     parser.add_argument('--max_step', '-ms', default=1000, type=int)
     return parser.parse_args()
 
-def get_trainer(trainer_name='maddpg'):
+def get_trainer(obs_size, num_agent, num_action, trainer_name='maddpg'):
     if trainer_name == 'maddpg':
-        trainer = MADDPG(num_agent, num_action)
+        trainer = MADDPG(obs_size, num_agent, num_action)
     return trainer
 
 def main(args):
@@ -39,25 +39,28 @@ def main(args):
     world = scenario.make_world()
     env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
     #env.render()
-    trainer = get_trainer('maddpg')
+    trainer = get_trainer(env.observation_space[0].shape[0], env.n, 7, 'maddpg')
     for episode in range(args.num_episode):
         print('-'*10+'EPISODE START'+'-'*10)
         obss = env.reset()
         step = 0
         while True:
             acts = trainer.act(obss)
+            step += 1
             obss_next, rews, masks, _ = env.step(acts)
-            for i, policy in enumerate(policies):
+            for i, memory in enumerate(trainer.memories):
                 '''
                 obss : (18, )
                 acts : (7, )
                 rews : float
                 mask : bool
                 '''
-                policy.memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i])
-            if step % args.batch_size == 0:
-                policy.train()
-            step += 1
+                memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i])
+            obss = obss_next
+            if (step % args.batch_size) == 0:
+                 
+                print('-'*10+'TRAIN START'+'-'*10)
+                trainer.train(args.batch_size)
             if all(masks):
                 break
             if step > args.max_step:

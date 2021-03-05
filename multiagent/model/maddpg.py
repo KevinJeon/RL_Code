@@ -1,10 +1,11 @@
+import torch.nn.functional as F
 import torch as tr
 import torch.nn as nn
 import torch.optim as optim
-
+from utils.replay_buffer import OffpolicyMemory
 class Policy(nn.Module):
     def __init__(self, obs_size, num_action):
-        super(self, Policy).__init__()
+        super(Policy, self).__init__()
         self.layers = nn.Sequential(
                 nn.Linear(obs_size, 64), nn.ReLU(inplace=True), nn.Linear(64,64),nn.ReLU(inplace=True), nn.Linear(64, num_action))
     def forward(self, obs):
@@ -12,20 +13,43 @@ class Policy(nn.Module):
 
 class Critic(nn.Module):
     def __init__(self, state_size, num_action):
-        super(self, Critic).__init__()
+        super(Critic, self).__init__()
         self.layers = nn.Sequential(
-                nn.Linear(state_size + num_action, 64), nn.ReLU(inplace=True), nn.Linear(64,64),nn.ReLU(inplace=True), nn.Linear(64, 1))
+            nn.Linear(state_size + num_action, 64),
+            nn.ReLU(inplace=True), 
+            nn.Linear(64,64),
+            nn.ReLU(inplace=True), 
+            nn.Linear(64, 1))
+    
     def forward(self, state, action):
+        obs = tr.cat([state, action], dim=-1)
+        return self.layers(obs)
+        
+class MADDPG(object):
+    def __init__(self, obs_size, num_agent, num_action, gamma=0.99, cuda=False):
+        self.num_agent = num_agent
+        self.num_action = num_action
+        self.gamma = 0.99
+        self.tau = 1e-4
+        self.cuda = cuda
+        # Prediction Network
+        self.policies = [None] * self.num_agent
+        self.critics =  [None] * self.num_agent
+        # Target Network 
+        self.critics_t = [None] * self.num_agent
+        self.policies_t = [None] * self.num_agent
+        # Optimizers
         self.critic_optims = [None] * self.num_agent
+        self.policy_optims = [None] * self.num_agent
         # Memories
         self.memories = [None] * self.num_agent
         # Load Models and Optimizer
         for i in range(num_agent):
             self.policies[i] = Policy(obs_size, num_action)
-            self.criticis[i] = Critic(obs_size, num_action)
+            self.critics[i] = Critic(obs_size, num_action)
             
             self.policies_t[i] = Policy(obs_size, num_action)
-            self.criticis_t[i] = Critic(obs_size, num_action)
+            self.critics_t[i] = Critic(obs_size, num_action)
 
             self.policy_optims[i] = optim.Adam(self.policies[i].parameters(), lr=0.001)
             self.critic_optims[i] = optim.Adam(self.critics[i].parameters(), lr=0.001)
@@ -34,36 +58,48 @@ class Critic(nn.Module):
             if self.cuda:
                 self.policies[i] = self.policies[i].cuda()
                 self.critics[i] = self.critics[i].cuda()
-        
-    def act(self, observations):
+         
+    def act(self, _observations):
         pis = []
-        for i in range(self.num_agent)
-            pi = self.policies_t[i](observations[i])
-            self.pis.append(pi.detach().numpy())
+        for i in range(self.num_agent):
+            obs = tr.from_numpy(_observations[i]).float()
+            pi = self.policies_t[i](obs)
+            pis.append(pi.detach().numpy())
         return pis
+
     def update(self):
         for a, a_t, c, c_t in zip(self.policies, self.policies_t, self.critics, self.critics_t):
-            srcs = [a.parameters(), c.paramters()]
+            srcs = [a.parameters(), c.parameters()]
             trgs =  [a_t.parameters(), c_t.parameters()]
             for src, trg in zip(srcs, trgs):
-                trg = self.tau * trg + (1 - self.tau) * src
-    def train(self):
+                trg = self.tau * trg.data() + (1 - self.tau) * src.data()
+    
+    def train(self, batch_size):
         for ind, (a, a_t, c, c_t, a_o, c_o) in enumerate(zip(self.policies, self.policies_t, self.critics, self.critics_t, self.policy_optims, self.critic_optims)):
-            obss, acts, rews, obss_next, masks = memory.sample()
-            obss = tr.from_numpy(obss, dtype=tr.float)
-            acts = tr.from_numpy(acts, dtype=tr.float)
-            obss_next = tr.from_numpy(obss_next, dtype=tr.float)
+            obss, acts, rews, obss_next, masks = self.memories[ind].sample(batch_size)
+            obss = tr.from_numpy(obss).float()
+            acts = tr.from_numpy(acts).float()
+            obss_next = tr.from_numpy(obss_next).float()
+            masks = tr.from_numpy(masks).float()
             q = c(obss, acts)
-            q_t = c_t(obss_next, a_t(obss_next).detach())
-            target = q_t * self.gamma * mask + rews
-            
+            q_t = c_t(obss_next, a_t(obss_next).detach()).detach()
+            target = q_t * self.gamma * masks + rews
+            target = target.float()
             # Update Critic
-            critic_loss = F.mse_loss(target, q)
+            critic_loss = F.mse_loss(target, q).mean()
             c_o.zero_grad()
             critic_loss.backward()
             c_o.step()
             
             # Update Policy
+            actor_loss = - c(obss, a(obss)).mean()
+            a_o.zero_grad()
+            actor_loss.backward()
+            a_o.step()
 
-
-            
+        self.update() 
+        
+    def save(self, save_dir):
+        for ind, (policy, critic) in enumerate(zip(self.policies, self.critics)):
+            tr.save(policy.state_dict(), save_dir + 'actor_{}.h5'.format(ind))
+            tr.save(critic.state_dict(), save_dir + 'critic_{}.h5'.format(ind))
