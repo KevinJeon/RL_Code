@@ -1,8 +1,12 @@
+import os
 import torch.nn.functional as F
 import torch as tr
 import torch.nn as nn
 import torch.optim as optim
 from utils.replay_buffer import OffpolicyMemory
+
+
+
 class Policy(nn.Module):
     def __init__(self, obs_size, num_action):
         super(Policy, self).__init__()
@@ -26,12 +30,15 @@ class Critic(nn.Module):
         return self.layers(obs)
         
 class MADDPG(object):
-    def __init__(self, obs_size, num_agent, num_action, gamma=0.99, cuda=False):
+    def __init__(self, obs_size, num_agent, num_action, 
+            batch_size, gamma=0.99, cuda=False):
         self.num_agent = num_agent
         self.num_action = num_action
         self.gamma = 0.99
         self.tau = 1e-4
         self.cuda = cuda
+        self.lr = 1e-4
+        self.batch_size = batch_size
         # Prediction Network
         self.policies = [None] * self.num_agent
         self.critics =  [None] * self.num_agent
@@ -51,14 +58,14 @@ class MADDPG(object):
             self.policies_t[i] = Policy(obs_size, num_action)
             self.critics_t[i] = Critic(obs_size, num_action)
 
-            self.policy_optims[i] = optim.Adam(self.policies[i].parameters(), lr=0.001)
-            self.critic_optims[i] = optim.Adam(self.critics[i].parameters(), lr=0.001)
+            self.policy_optims[i] = optim.Adam(self.policies[i].parameters(), lr=self.lr)
+            self.critic_optims[i] = optim.Adam(self.critics[i].parameters(), lr=self.lr)
             
             self.memories[i] = OffpolicyMemory(agent_ind=i, capacity=50000) 
             if self.cuda:
                 self.policies[i] = self.policies[i].cuda()
                 self.critics[i] = self.critics[i].cuda()
-         
+        
     def act(self, _observations):
         pis = []
         for i in range(self.num_agent):
@@ -76,6 +83,7 @@ class MADDPG(object):
                     tparam.data.copy_(tparam.data * (1 - self.tau) + sparam * self.tau) 
     
     def train(self, batch_size):
+        critic_losses, actor_losses = [], []
         for ind, (a, a_t, c, c_t, a_o, c_o) in enumerate(zip(self.policies, self.policies_t, self.critics, self.critics_t, self.policy_optims, self.critic_optims)):
             obss, acts, rews, obss_next, masks = self.memories[ind].sample(batch_size)
             obss = tr.from_numpy(obss).float()
@@ -98,10 +106,12 @@ class MADDPG(object):
             a_o.zero_grad()
             actor_loss.backward()
             a_o.step()
-
-        self.update() 
-        
+            critic_losses.append(critic_loss.item())
+            actor_losses.append(actor_loss.item())
+        self.update()
+        return critic_losses, actor_losses 
     def save(self, save_dir):
+        args = 'lr{}_tau{}_gamma_{}_bs{}'.format(self.lr, self.tau, self.gamma, self.batch_size)
         for ind, (policy, critic) in enumerate(zip(self.policies, self.critics)):
-            tr.save(policy.state_dict(), save_dir + 'actor_{}.h5'.format(ind))
-            tr.save(critic.state_dict(), save_dir + 'critic_{}.h5'.format(ind))
+            tr.save(policy.state_dict(), save_dir + '/actor{}_{}.h5'.format(args, ind))
+            tr.save(critic.state_dict(), save_dir + '/critic{}_{}.h5'.format(args, ind))

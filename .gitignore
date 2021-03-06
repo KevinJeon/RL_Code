@@ -1,2 +1,4 @@
 *.pyc
 *.swp
+./multiagent/logs/
+./multiagent/save/
