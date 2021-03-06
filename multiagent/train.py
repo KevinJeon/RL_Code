@@ -65,7 +65,7 @@ def main(args):
                 break
             if step > args.max_step:
                 break
-            #env.render()
+            env.render()
             
 
 

@@ -69,10 +69,11 @@ class MADDPG(object):
 
     def update(self):
         for a, a_t, c, c_t in zip(self.policies, self.policies_t, self.critics, self.critics_t):
-            srcs = [a.parameters(), c.parameters()]
-            trgs =  [a_t.parameters(), c_t.parameters()]
+            srcs = [a, c]
+            trgs =  [a_t, c_t]
             for src, trg in zip(srcs, trgs):
-                trg = self.tau * trg.data() + (1 - self.tau) * src.data()
+                for sparam, tparam in zip(src.parameters(), trg.parameters()):
+                    tparam.data.copy_(tparam.data * (1 - self.tau) + sparam * self.tau) 
     
     def train(self, batch_size):
         for ind, (a, a_t, c, c_t, a_o, c_o) in enumerate(zip(self.policies, self.policies_t, self.critics, self.critics_t, self.policy_optims, self.critic_optims)):
@@ -80,7 +81,8 @@ class MADDPG(object):
             obss = tr.from_numpy(obss).float()
             acts = tr.from_numpy(acts).float()
             obss_next = tr.from_numpy(obss_next).float()
-            masks = tr.from_numpy(masks).float()
+            masks = tr.from_numpy(masks).float().view(-1, 1)
+            rews = tr.from_numpy(rews).float().view(-1, 1)
             q = c(obss, acts)
             q_t = c_t(obss_next, a_t(obss_next).detach()).detach()
             target = q_t * self.gamma * masks + rews
