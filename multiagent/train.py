@@ -14,7 +14,7 @@ class RandomPolicy:
     def __init__(self, agent_index, num_agent, batch_size):
         self.agent_index = agent_index
         self.batch_size = batch_size
-        self.memory = OffpolicyMemory(agent_index, 50000)
+        self.memory = OffpolicyMemory(agent_index, 1e6)
     def act(self, obs):
         return np.array([1, 0, 0, 0, 0, 0, 0])
     def train(self):
@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument('--num_episode', '-e', default=1000, type=int)
     parser.add_argument('--batch_size', '-b', default=32, type=int)
     parser.add_argument('--env_name', '-en', default='simple_spread', type=str)
-    parser.add_argument('--max_step', '-ms', default=1000, type=int)
+    parser.add_argument('--max_step', '-ms', default=100, type=int)
     parser.add_argument('--save_dir', '-s', default='./save', type=str)
     parser.add_argument('--save_freq', '-sf', default=100, type=int)
     parser.add_argument('--log_dir', '-l', default='./logs', type=str)
@@ -46,12 +46,12 @@ def main(args):
     if not os.path.exists(args.log_dir):
         os.mkdir(args.log_dir)
         if not os.path.exists(args.log_dir+'/{}'.format(st_time)):
-            print('HI!')
             os.mkdir(args.log_dir+'/{}'.format(st_time))
     scenario = scenarios.load(args.env_name+'.py').Scenario()
     world = scenario.make_world()
     env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
     #env.render()
+    total_step = 0
     writer = SummaryWriter(args.log_dir+'/{}'.format(st_time))
     trainer = get_trainer(env.observation_space[0].shape[0], env.n, 7, args.batch_size, 'maddpg')
     for episode in range(args.num_episode):
@@ -63,6 +63,7 @@ def main(args):
         while True:
             acts = trainer.act(obss)
             step += 1
+            total_step += 1
             obss_next, rews, masks, _ = env.step(acts)
             for i, memory in enumerate(trainer.memories):
                 '''
@@ -78,15 +79,14 @@ def main(args):
                 memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i], model_inputs)
                 total_reward[i] += rews[i]
             obss = obss_next
-            if (step % args.batch_size) == 0:
-                 
-                critic_losses, actor_losses = trainer.train(args.batch_size)
+            if all(masks) or (step > args.max_step):
+                if len(trainer.memories[0]) < args.batch_size:
+                    critic_losses, actor_losses = trainer.train(len(trainer.memories[0]))
+                else:
+                    critic_losses, actor_losses = trainer.train(args.batch_size)
                 for i, (closs, aloss) in enumerate(zip(critic_losses, actor_losses)):
                     a_losses[i].append(aloss)
                     c_losses[i].append(closs)
-            if all(masks):
-                break
-            if step > args.max_step:
                 break
             env.render()
         for i in range(env.n):
