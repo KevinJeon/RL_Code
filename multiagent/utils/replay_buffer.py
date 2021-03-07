@@ -10,7 +10,7 @@ class OffpolicyMemory(object):
         self.storage = []
 
     def __len__(self):
-        return len(self._storage)
+        return len(self.storage)
 
     def clear(self):
         self.storage = []
