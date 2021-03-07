@@ -1,5 +1,6 @@
 import argparse
 import os, sys
+from datetime import datetime
 sys.path.append('../')
 from torch.utils.tensorboard import SummaryWriter
 from environment import MultiAgentEnv
@@ -39,15 +40,19 @@ def get_trainer(obs_size, num_agent, num_action, batch_size, trainer_name='maddp
     return trainer
 
 def main(args):
+    st_time = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
     if not os.path.exists(args.save_dir):
         os.mkdir(args.save_dir)
     if not os.path.exists(args.log_dir):
         os.mkdir(args.log_dir)
+        if not os.path.exists(args.log_dir+'/{}'.format(st_time)):
+            print('HI!')
+            os.mkdir(args.log_dir+'/{}'.format(st_time))
     scenario = scenarios.load(args.env_name+'.py').Scenario()
     world = scenario.make_world()
     env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
     #env.render()
-    writer = SummaryWriter(args.log_dir)
+    writer = SummaryWriter(args.log_dir+'/{}'.format(st_time))
     trainer = get_trainer(env.observation_space[0].shape[0], env.n, 7, args.batch_size, 'maddpg')
     for episode in range(args.num_episode):
         a_losses,c_losses = [[] for _ in range(env.n)], [[] for _ in range(env.n)]
@@ -89,7 +94,7 @@ def main(args):
             writer.add_scalar('agent{}/critic_loss'.format(i), sum(c_losses[i])/len(c_losses[i]), episode)
             writer.add_scalar('agent{}/total_reward'.format(i), total_reward[i], episode)
         if episode % args.save_freq == 0:
-            trainer.save(args.save_dir)
+            trainer.save(args.save_dir, episode)
     writer.close()
             
 

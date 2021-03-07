@@ -119,8 +119,8 @@ class MADDPG(object):
             actor_losses.append(actor_loss.item())
         self.update()
         return critic_losses, actor_losses 
-    def save(self, save_dir):
-        args = 'lr{}_tau{}_gamma_{}_bs{}'.format(self.lr, self.tau, self.gamma, self.batch_size)
+    def save(self, save_dir, epoch):
+        args = 'epoch{}_lr{}_tau{}_gamma_{}_bs{}'.format(epoch, self.lr, self.tau, self.gamma, self.batch_size)
         for ind, (policy, critic) in enumerate(zip(self.policies, self.critics)):
             tr.save(policy.state_dict(), save_dir + '/actor{}_{}.h5'.format(args, ind))
             tr.save(critic.state_dict(), save_dir + '/critic{}_{}.h5'.format(args, ind))
