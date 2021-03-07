@@ -8,7 +8,6 @@ class OffpolicyMemory(object):
         self.agent_ind = agent_ind 
         # Data 
         self.storage = []
-        self._next_ind = 0
 
     def __len__(self):
         return len(self._storage)
@@ -17,12 +16,12 @@ class OffpolicyMemory(object):
         self.storage = []
         self._next_ind = 0
 
-    def add(self, obs, act, rew, obs_next, mask):
+    def add(self, obs, act, rew, obs_next, mask, model_input):
         '''
-        Input format : Tensor format
+        Input format : o_t, a_t, r_t, o_{t+1}, T, (model_input: optional)
 
         '''
-        data = (obs, act, rew, obs_next, mask)
+        data = (obs, act, rew, obs_next, mask, model_input)
         if self._next_ind >= len(self.storage):
             self.storage.append(data)
         else:
@@ -30,16 +29,17 @@ class OffpolicyMemory(object):
         self._next_ind = (self._next_ind + 1) % self._maxsize
     
     def _encode_sample(self, ids):
-        obss, acts, rews, obss_next, masks = [], [], [], [], []
+        obss, acts, rews, obss_next, masks, model_inputs = [], [], [], [], [], []
         for ind in ids:
             data = self.storage[ind]
-            obs, act, rew, obs_next, mask = data
+            obs, act, rew, obs_next, mask, model_input = data
             obss.append(np.array(obs, copy=False))
             acts.append(np.array(act, copy=False))
             rews.append(rew)
             obss_next.append(np.array(obs_next, copy=False))
             masks.append(mask)
-        return np.array(obss), np.array(acts), np.array(rews), np.array(obss_next), np.array(masks)
+            model_inputs.append(model_input)
+        return np.array(obss), np.array(acts), np.array(rews), np.array(obss_next), np.array(masks), model_inputs
 
     def make_index(self, batch_size):
         return [random.randint(0, len(self.storage) - 1) for _ in range(batch_size)]

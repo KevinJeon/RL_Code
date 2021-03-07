@@ -66,7 +66,11 @@ def main(args):
                 rews : float
                 mask : bool
                 '''
-                memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i])
+                state = np.reshape(obss, (-1))
+                next_state = np.reshape(obss_next, (-1))
+                all_acts = np.reshape(acts, (-1))
+                model_inputs = (state, next_state, all_acts)
+                memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i], model_inputs)
                 total_reward[i] += rews[i]
             obss = obss_next
             if (step % args.batch_size) == 0:

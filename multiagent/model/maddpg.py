@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch.nn.functional as F
 import torch as tr
 import torch.nn as nn
@@ -16,10 +17,10 @@ class Policy(nn.Module):
         return self.layers(obs)
 
 class Critic(nn.Module):
-    def __init__(self, state_size, num_action):
+    def __init__(self, state_size, num_action, num_agent):
         super(Critic, self).__init__()
         self.layers = nn.Sequential(
-            nn.Linear(state_size + num_action, 64),
+            nn.Linear((state_size + num_action) * num_agent, 64),
             nn.ReLU(inplace=True), 
             nn.Linear(64,64),
             nn.ReLU(inplace=True), 
@@ -53,10 +54,10 @@ class MADDPG(object):
         # Load Models and Optimizer
         for i in range(num_agent):
             self.policies[i] = Policy(obs_size, num_action)
-            self.critics[i] = Critic(obs_size, num_action)
+            self.critics[i] = Critic(obs_size, num_action, num_agent)
             
             self.policies_t[i] = Policy(obs_size, num_action)
-            self.critics_t[i] = Critic(obs_size, num_action)
+            self.critics_t[i] = Critic(obs_size, num_action, num_agent)
 
             self.policy_optims[i] = optim.Adam(self.policies[i].parameters(), lr=self.lr)
             self.critic_optims[i] = optim.Adam(self.critics[i].parameters(), lr=self.lr)
@@ -85,14 +86,21 @@ class MADDPG(object):
     def train(self, batch_size):
         critic_losses, actor_losses = [], []
         for ind, (a, a_t, c, c_t, a_o, c_o) in enumerate(zip(self.policies, self.policies_t, self.critics, self.critics_t, self.policy_optims, self.critic_optims)):
-            obss, acts, rews, obss_next, masks = self.memories[ind].sample(batch_size)
+            obss, acts, rews, obss_next, masks, maddpg_inputs = self.memories[ind].sample(batch_size)
+            states = np.array([state[0] for state in maddpg_inputs])
+            next_states = np.array([next_state[1] for next_state in maddpg_inputs])
+            all_acts = np.array([all_act[2] for all_act in maddpg_inputs])
+            states = tr.from_numpy(states).float()
+            next_states = tr.from_numpy(next_states).float()
+            all_acts = tr.from_numpy(all_acts).float()
             obss = tr.from_numpy(obss).float()
             acts = tr.from_numpy(acts).float()
             obss_next = tr.from_numpy(obss_next).float()
             masks = tr.from_numpy(masks).float().view(-1, 1)
             rews = tr.from_numpy(rews).float().view(-1, 1)
-            q = c(obss, acts)
-            q_t = c_t(obss_next, a_t(obss_next).detach()).detach()
+            q = c(states, all_acts)
+            acts_t = tr.cat([pi(obss_next) for pi in self.policies], dim=-1)
+            q_t = c_t(next_states, acts_t).detach()
             target = q_t * self.gamma * masks + rews
             target = target.float()
             # Update Critic
@@ -102,7 +110,8 @@ class MADDPG(object):
             c_o.step()
             
             # Update Policy
-            actor_loss = - c(obss, a(obss)).mean()
+            acts_p = tr.cat([pi(obss) for pi in self.policies], dim=-1) 
+            actor_loss = - c(states, acts_p).mean()
             a_o.zero_grad()
             actor_loss.backward()
             a_o.step()
