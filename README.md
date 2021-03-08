@@ -6,8 +6,8 @@ TODO(3/3)
 ===================
 
 - [X] Fix Update File
-- [ ] Check Training with Tensorboard 
+- [X] Check Training with Tensorboard 
 - [ ] Add additional function tqdm
-- [ ] Finish MADDPG Trainer
-- [ ] Finish Evaluation Code to Experiment Decentralized Agents
+- [X] Finish MADDPG Trainer
+- [ ] Start DIAYN
 - [ ] Start COMA  

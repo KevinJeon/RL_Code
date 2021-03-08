@@ -57,12 +57,9 @@ def main(args):
     for episode in range(args.num_episode):
         a_losses,c_losses = [[] for _ in range(env.n)], [[] for _ in range(env.n)]
         total_reward = [0] * env.n
-        print('-'*10+'EPISODE START'+'-'*10)
         obss = env.reset()
-        step = 0
-        while True:
+        for step in range(args.max_step):
             acts = trainer.act(obss)
-            step += 1
             total_step += 1
             obss_next, rews, masks, _ = env.step(acts)
             for i, memory in enumerate(trainer.memories):
@@ -79,20 +76,18 @@ def main(args):
                 memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i], model_inputs)
                 total_reward[i] += rews[i]
             obss = obss_next
-            if all(masks) or (step > args.max_step):
-                if len(trainer.memories[0]) < args.batch_size:
-                    critic_losses, actor_losses = trainer.train(len(trainer.memories[0]))
-                else:
-                    critic_losses, actor_losses = trainer.train(args.batch_size)
+            
+            if (len(trainer.memories[0]) >= args.batch_size) and (total_step % 100 == 0):
+                critic_losses, actor_losses = trainer.train(args.batch_size)
                 for i, (closs, aloss) in enumerate(zip(critic_losses, actor_losses)):
                     a_losses[i].append(aloss)
                     c_losses[i].append(closs)
-                break
+                    writer.add_scalar('agent{}/actor_loss'.format(i), aloss, total_step)
+                    writer.add_scalar('agent{}/critic_loss'.format(i), closs, total_step)
+                continue
             env.render()
-        for i in range(env.n):
-            writer.add_scalar('agent{}/actor_loss'.format(i), sum(a_losses[i])/len(a_losses[i]), episode)
-            writer.add_scalar('agent{}/critic_loss'.format(i), sum(c_losses[i])/len(c_losses[i]), episode)
-            writer.add_scalar('agent{}/total_reward'.format(i), total_reward[i], episode)
+        print('-'*10+'EPISODE END! REWARD :{} STEP : {}'.format(total_reward[0], total_step)+'-'*10)
+        writer.add_scalar('Total_reward', total_reward[i], episode)
         if episode % args.save_freq == 0:
             trainer.save(args.save_dir, episode)
     writer.close()

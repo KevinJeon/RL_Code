@@ -6,7 +6,9 @@ import torch.nn as nn
 import torch.optim as optim
 from utils.replay_buffer import OffpolicyMemory
 
-
+class OU(object):
+    def function(self, x, mu=0, theta=0.15, sigma=0.2):
+        return theta * (mu -x) + sigma * np.random.randn(len(x))
 
 class Policy(nn.Module):
     def __init__(self, obs_size, num_action):
@@ -39,9 +41,9 @@ class MADDPG(object):
         self.num_agent = num_agent
         self.num_action = num_action
         self.gamma = 0.99
-        self.tau = 0.05
+        self.tau = 0.01
         self.cuda = cuda
-        self.lr = 1e-4
+        self.lr = 5e-3
         self.batch_size = batch_size
         # Prediction Network
         self.policies = [None] * self.num_agent
@@ -54,6 +56,7 @@ class MADDPG(object):
         self.policy_optims = [None] * self.num_agent
         # Memories
         self.memories = [None] * self.num_agent
+        self.ou = OU()
         # Load Models and Optimizer
         for i in range(num_agent):
             self.policies[i] = Policy(obs_size, num_action)
@@ -61,7 +64,9 @@ class MADDPG(object):
             
             self.policies_t[i] = Policy(obs_size, num_action)
             self.critics_t[i] = Critic(obs_size, num_action, num_agent)
-
+            
+            self.policies_t[i].load_state_dict(self.policies[i].state_dict())
+            self.critics_t[i].load_state_dict(self.critics[i].state_dict())
             self.policy_optims[i] = optim.Adam(self.policies[i].parameters(), lr=self.lr)
             self.critic_optims[i] = optim.Adam(self.critics[i].parameters(), lr=self.lr)
             
@@ -74,18 +79,23 @@ class MADDPG(object):
         pis = []
         for i in range(self.num_agent):
             obs = tr.from_numpy(_observations[i]).float()
-            _, pi = self.policies_t[i](obs)
-            pis.append(pi.detach().numpy())
+            _, pi = self.policies[i](obs)
+            pis.append(pi.detach().numpy() + self.ou.function(pi.detach().numpy())*0.1)
         return pis
 
     def update(self):
-        for a, a_t, c, c_t in zip(self.policies, self.policies_t, self.critics, self.critics_t):
-            srcs = [a, c]
-            trgs =  [a_t, c_t]
-            for src, trg in zip(srcs, trgs):
-                for sparam, tparam in zip(src.parameters(), trg.parameters()):
-                    tparam.data.copy_(tparam.data * self.tau + sparam * (1 - self.tau)) 
-
+        for src, trg in zip(self.policies, self.policies_t):
+            param_names = list(src.state_dict().keys())
+            src_params = src.state_dict()
+            trg_params = trg.state_dict()
+            for param in param_names:
+                trg_params[param] = src_params[param] * self.tau + trg_params[param] * (1 - self.tau)
+        for src, trg in zip(self.critics, self.critics_t):
+            param_names = list(src.state_dict().keys())
+            src_params = src.state_dict()
+            trg_params = trg.state_dict()
+            for param in param_names:
+                trg_params[param] = src_params[param] * self.tau + trg_params[param] * (1 - self.tau)
     def train(self, batch_size): 
         critic_losses, actor_losses = [], []
         for ind, (a, a_t, c, c_t, a_o, c_o) in enumerate(zip(self.policies, self.policies_t, self.critics, self.critics_t, self.policy_optims, self.critic_optims)):
@@ -102,22 +112,24 @@ class MADDPG(object):
             masks = tr.from_numpy(masks).float().view(-1, 1)
             rews = tr.from_numpy(rews).float().view(-1, 1)
             q = c(states, all_acts)
-            acts_t = tr.cat([pi(obss_next)[1] for pi in self.policies], dim=-1)
+            acts_t = tr.cat([pi(obss_next)[1].detach() for pi in self.policies_t], dim=-1)
             q_t = c_t(next_states, acts_t).detach()
-            target = q_t * self.gamma * masks + rews
+            target = q_t * self.gamma * (1 - masks) + rews
             target = target.float()
             # Update Critic
-            critic_loss = F.mse_loss(target, q).mean()
+            critic_loss = nn.MSELoss()(target, q)
             c_o.zero_grad()
             critic_loss.backward()
+            tr.nn.utils.clip_grad_norm(c.parameters(), 0.5)
             c_o.step()
             
             # Update Policy
-            out, pi = a(obss)
+            _, pi = a(obss)
             all_acts[:, self.num_action * ind:self.num_action * (ind + 1)] = pi
-            actor_loss = tr.pow(out.mean(), 2) * 1e-3 - c(states, all_acts).mean()
+            actor_loss = tr.pow(pi, 2).mean() * 1e-3 - c(states, all_acts).mean()
             a_o.zero_grad()
             actor_loss.backward()
+            tr.nn.utils.clip_grad_norm(a.parameters(), 0.5)
             a_o.step()
             critic_losses.append(critic_loss.item())
             actor_losses.append(actor_loss.item())
