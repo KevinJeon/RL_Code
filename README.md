@@ -8,6 +8,6 @@ TODO(3/3)
 - [X] Fix Update File
 - [X] Check Training with Tensorboard 
 - [ ] Add additional function tqdm
+- [ ] Add Evaluation Code and Load Model
 - [X] Finish MADDPG Trainer
 - [ ] Start DIAYN
-- [ ] Start COMA  
