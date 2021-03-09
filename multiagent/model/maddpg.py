@@ -17,9 +17,7 @@ class Policy(nn.Module):
                 nn.Linear(obs_size, 64), nn.ReLU(inplace=True), nn.Linear(64,64),nn.ReLU(inplace=True), nn.Linear(64, num_action))
     def forward(self, obs):
         out = self.layers(obs)
-        u = tr.rand_like(out)
-        pi = F.softmax(out - tr.log(-tr.log(u)), dim=-1)
-        return out, pi
+        return out
 
 class Critic(nn.Module):
     def __init__(self, state_size, num_action, num_agent):
@@ -40,10 +38,11 @@ class MADDPG(object):
             batch_size, gamma=0.99, cuda=False):
         self.num_agent = num_agent
         self.num_action = num_action
-        self.gamma = 0.99
+        self.gamma = 0.95
         self.tau = 0.01
+        self.scale = 0.1
         self.cuda = cuda
-        self.lr = 5e-3
+        self.lr = 1e-2
         self.batch_size = batch_size
         # Prediction Network
         self.policies = [None] * self.num_agent
@@ -79,8 +78,9 @@ class MADDPG(object):
         pis = []
         for i in range(self.num_agent):
             obs = tr.from_numpy(_observations[i]).float()
-            _, pi = self.policies[i](obs)
-            pis.append(pi.detach().numpy() + self.ou.function(pi.detach().numpy())*0.1)
+            pi = self.policies[i](obs.detach())
+            act = F.gumbel_softmax(pi.detach(), hard=True)
+            pis.append(act.numpy())
         return pis
 
     def update(self):
@@ -96,6 +96,9 @@ class MADDPG(object):
             trg_params = trg.state_dict()
             for param in param_names:
                 trg_params[param] = src_params[param] * self.tau + trg_params[param] * (1 - self.tau)
+    def one_hot(self, logit):
+        onehot = (logit == logit.max(1, keepdim=True)[0]).float()
+        return onehot
     def train(self, batch_size): 
         critic_losses, actor_losses = [], []
         for ind, (a, a_t, c, c_t, a_o, c_o) in enumerate(zip(self.policies, self.policies_t, self.critics, self.critics_t, self.policy_optims, self.critic_optims)):
@@ -112,7 +115,7 @@ class MADDPG(object):
             masks = tr.from_numpy(masks).float().view(-1, 1)
             rews = tr.from_numpy(rews).float().view(-1, 1)
             q = c(states, all_acts)
-            acts_t = tr.cat([pi(obss_next)[1].detach() for pi in self.policies_t], dim=-1)
+            acts_t = tr.cat([self.one_hot(pi(obss_next).detach()) for pi in self.policies_t], dim=-1)
             q_t = c_t(next_states, acts_t).detach()
             target = q_t * self.gamma * (1 - masks) + rews
             target = target.float()
@@ -124,9 +127,10 @@ class MADDPG(object):
             c_o.step()
             
             # Update Policy
-            _, pi = a(obss)
-            all_acts[:, self.num_action * ind:self.num_action * (ind + 1)] = pi
-            actor_loss = tr.pow(pi, 2).mean() * 1e-3 - c(states, all_acts).mean()
+            pi = a(obss)
+            pi_act = F.gumbel_softmax(pi, hard=True)
+            all_acts[:, self.num_action * ind:self.num_action * (ind + 1)] = pi_act
+            actor_loss = (pi**2).mean() * 1e-3 - c(states, all_acts).mean()
             a_o.zero_grad()
             actor_loss.backward()
             tr.nn.utils.clip_grad_norm(a.parameters(), 0.5)
