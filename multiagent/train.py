@@ -32,11 +32,12 @@ def parse_args():
     parser.add_argument('--save_dir', '-s', default='./save', type=str)
     parser.add_argument('--save_freq', '-sf', default=100, type=int)
     parser.add_argument('--log_dir', '-l', default='./logs', type=str)
+    parser.add_argument('--use_gpu', '-c', default=False, type=bool)
     return parser.parse_args()
 
-def get_trainer(obs_size, num_agent, num_action, batch_size, trainer_name='maddpg'):
+def get_trainer(obs_size, num_agent, num_action, batch_size, trainer_name='maddpg', use_gpu=False):
     if trainer_name == 'maddpg':
-        trainer = MADDPG(obs_size, num_agent, num_action, batch_size=batch_size,) 
+        trainer = MADDPG(obs_size, num_agent, num_action, batch_size=batch_size, use_gpu=use_gpu) 
     return trainer
 
 def main(args):
@@ -53,7 +54,7 @@ def main(args):
     #env.render()
     total_step = 0
     writer = SummaryWriter(args.log_dir+'/{}'.format(st_time))
-    trainer = get_trainer(env.observation_space[0].shape[0], env.n, 7, args.batch_size, 'maddpg')
+    trainer = get_trainer(env.observation_space[0].shape[0], env.n, 7, args.batch_size, 'maddpg', args.use_gpu)
     for episode in range(args.num_episode):
         a_losses,c_losses = [[] for _ in range(env.n)], [[] for _ in range(env.n)]
         total_reward = [0] * env.n

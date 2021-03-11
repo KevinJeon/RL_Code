@@ -35,13 +35,13 @@ class Critic(nn.Module):
         
 class MADDPG(object):
     def __init__(self, obs_size, num_agent, num_action, 
-            batch_size, gamma=0.99, cuda=False):
+            batch_size, gamma=0.99, use_gpu=False):
         self.num_agent = num_agent
         self.num_action = num_action
         self.gamma = 0.95
         self.tau = 0.01
         self.scale = 0.1
-        self.cuda = cuda
+        self.use_gpu = use_gpu
         self.lr = 1e-2
         self.batch_size = batch_size
         # Prediction Network
@@ -56,6 +56,8 @@ class MADDPG(object):
         # Memories
         self.memories = [None] * self.num_agent
         self.ou = OU()
+        # Check GPU
+        print('Cuda Device : {}, GPU Count : {}'.format(tr.cuda.current_device(), tr.cuda.device_count()))
         # Load Models and Optimizer
         for i in range(num_agent):
             self.policies[i] = Policy(obs_size, num_action)
@@ -70,17 +72,20 @@ class MADDPG(object):
             self.critic_optims[i] = optim.Adam(self.critics[i].parameters(), lr=self.lr)
             
             self.memories[i] = OffpolicyMemory(agent_ind=i, capacity=50000) 
-            if self.cuda:
+            if self.use_gpu:
                 self.policies[i] = self.policies[i].cuda()
                 self.critics[i] = self.critics[i].cuda()
+                self.policies_t[i] = self.policies_t[i].cuda()
+                self.critics_t[i] = self.critics_t[i].cuda()
+        
         
     def act(self, _observations):
         pis = []
         for i in range(self.num_agent):
             obs = tr.from_numpy(_observations[i]).float()
-            pi = self.policies[i](obs.detach())
+            pi = self.policies[i](obs.cuda().detach())
             act = F.gumbel_softmax(pi.detach(), hard=True)
-            pis.append(act.numpy())
+            pis.append(act.cpu().numpy())
         return pis
 
     def update(self):
@@ -106,14 +111,14 @@ class MADDPG(object):
             states = np.array([state[0] for state in maddpg_inputs])
             next_states = np.array([next_state[1] for next_state in maddpg_inputs])
             all_acts = np.array([all_act[2] for all_act in maddpg_inputs])
-            states = tr.from_numpy(states).float()
-            next_states = tr.from_numpy(next_states).float()
-            all_acts = tr.from_numpy(all_acts).float()
-            obss = tr.from_numpy(obss).float()
-            acts = tr.from_numpy(acts).float()
-            obss_next = tr.from_numpy(obss_next).float()
-            masks = tr.from_numpy(masks).float().view(-1, 1)
-            rews = tr.from_numpy(rews).float().view(-1, 1)
+            states = tr.from_numpy(states).cuda().float()
+            next_states = tr.from_numpy(next_states).cuda().float()
+            all_acts = tr.from_numpy(all_acts).cuda().float()
+            obss = tr.from_numpy(obss).cuda().float()
+            acts = tr.from_numpy(acts).cuda().float()
+            obss_next = tr.from_numpy(obss_next).cuda().float()
+            masks = tr.from_numpy(masks).cuda().float().view(-1, 1)
+            rews = tr.from_numpy(rews).cuda().float().view(-1, 1)
             q = c(states, all_acts)
             acts_t = tr.cat([self.one_hot(pi(obss_next).detach()) for pi in self.policies_t], dim=-1)
             q_t = c_t(next_states, acts_t).detach()
