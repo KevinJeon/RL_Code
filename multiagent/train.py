@@ -86,7 +86,6 @@ def main(args):
                     writer.add_scalar('agent{}/actor_loss'.format(i), aloss, total_step)
                     writer.add_scalar('agent{}/critic_loss'.format(i), closs, total_step)
                 continue
-            env.render()
         print('-'*10+'EPISODE END! REWARD :{} STEP : {}'.format(total_reward[0], total_step)+'-'*10)
         writer.add_scalar('Total_reward', total_reward[i], episode)
         if episode % args.save_freq == 0:

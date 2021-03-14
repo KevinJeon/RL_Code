@@ -2,3 +2,6 @@
 *.swp
 multiagent/logs
 multiagent/save
+multiagent/zeroshot
+multiagent/marl
+
