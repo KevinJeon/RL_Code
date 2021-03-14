@@ -8,7 +8,7 @@ import scenarios as scenarios
 from model.maddpg import MADDPG
 from utils.replay_buffer import OffpolicyMemory
 import numpy as np
-
+from gym.spaces import Box, Discrete, MultiDiscrete
 
 class RandomPolicy:
     def __init__(self, agent_index, num_agent, batch_size):
@@ -42,8 +42,8 @@ def get_trainer(obs_size, num_agent, num_action, batch_size, trainer_name='maddp
 
 def main(args):
     st_time = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-    if not os.path.exists(args.save_dir):
-        os.mkdir(args.save_dir)
+    if not os.path.exists(args.save_dir+'/{}'.format(args.env_name)):
+        os.mkdir(args.save_dir+'/{}'.format(args.env_name))
     if not os.path.exists(args.log_dir):
         os.mkdir(args.log_dir)
         if not os.path.exists(args.log_dir+'/{}'.format(st_time)):
@@ -54,7 +54,9 @@ def main(args):
     #env.render()
     total_step = 0
     writer = SummaryWriter(args.log_dir+'/{}'.format(st_time))
-    trainer = get_trainer(env.observation_space[0].shape[0], env.n, 7, args.batch_size, 'maddpg', args.use_gpu)
+    obs_sizes = [obs.shape[0] for obs in env.observation_space]
+    num_actions = [act.n for act in env.action_space]
+    trainer = get_trainer(obs_sizes, env.n, num_actions, args.batch_size, 'maddpg', args.use_gpu)
     for episode in range(args.num_episode):
         a_losses,c_losses = [[] for _ in range(env.n)], [[] for _ in range(env.n)]
         total_reward = [0] * env.n
@@ -70,9 +72,12 @@ def main(args):
                 rews : float
                 mask : bool
                 '''
-                state = np.reshape(obss, (-1))
-                next_state = np.reshape(obss_next, (-1))
-                all_acts = np.reshape(acts, (-1))
+                state = np.concatenate(obss, axis=-1)
+                state = np.reshape(state, (-1))
+                next_state = np.concatenate(obss_next, axis=-1)
+                next_state = np.reshape(next_state, (-1))
+                all_acts = np.concatenate(acts, axis=-1)
+                all_acts = np.reshape(all_acts, (-1))
                 model_inputs = (state, next_state, all_acts)
                 memory.add(obss[i], acts[i], rews[i], obss_next[i], masks[i], model_inputs)
                 total_reward[i] += rews[i]
@@ -86,10 +91,11 @@ def main(args):
                     writer.add_scalar('agent{}/actor_loss'.format(i), aloss, total_step)
                     writer.add_scalar('agent{}/critic_loss'.format(i), closs, total_step)
                 continue
+            env.render()
         print('-'*10+'EPISODE END! REWARD :{} STEP : {}'.format(total_reward[0], total_step)+'-'*10)
         writer.add_scalar('Total_reward', total_reward[i], episode)
-        if episode % args.save_freq == 0:
-            trainer.save(args.save_dir, episode)
+        if (episode % args.save_freq == 0) or (episode == args.num_episode - 1):
+            trainer.save(args.save_dir+'/{}'.format(args.env_name), episode)
     writer.close()
             
 

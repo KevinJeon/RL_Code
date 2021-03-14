@@ -20,10 +20,10 @@ class Policy(nn.Module):
         return out
 
 class Critic(nn.Module):
-    def __init__(self, state_size, num_action, num_agent):
+    def __init__(self, state_size, all_action):
         super(Critic, self).__init__()
         self.layers = nn.Sequential(
-            nn.Linear((state_size + num_action) * num_agent, 64),
+            nn.Linear(state_size + all_action, 64),
             nn.ReLU(inplace=True), 
             nn.Linear(64,64),
             nn.ReLU(inplace=True), 
@@ -34,10 +34,10 @@ class Critic(nn.Module):
         return self.layers(obs)
         
 class MADDPG(object):
-    def __init__(self, obs_size, num_agent, num_action, 
+    def __init__(self, obs_sizes, num_agent, num_actions, 
             batch_size, gamma=0.99, use_gpu=False):
         self.num_agent = num_agent
-        self.num_action = num_action
+        self.num_actions = num_actions
         self.gamma = 0.95
         self.tau = 0.01
         self.scale = 0.1
@@ -59,12 +59,18 @@ class MADDPG(object):
         # Check GPU
         print('Cuda Device : {}, GPU Count : {}'.format(tr.cuda.current_device(), tr.cuda.device_count()))
         # Load Models and Optimizer
-        for i in range(num_agent):
+        all_action = sum(num_actions)
+        state_size = sum(obs_sizes)
+        self.obs_ind = []
+        self.act_ind = []
+        ocum, acum = 0, 0
+        for i, (obs_size, num_action) in enumerate(zip(obs_sizes, num_actions)):
+            print('Agent {} Obs {} Act {}'.format(i, obs_size, num_action))
             self.policies[i] = Policy(obs_size, num_action)
-            self.critics[i] = Critic(obs_size, num_action, num_agent)
+            self.critics[i] = Critic(state_size, all_action)
             
             self.policies_t[i] = Policy(obs_size, num_action)
-            self.critics_t[i] = Critic(obs_size, num_action, num_agent)
+            self.critics_t[i] = Critic(state_size, all_action)
             
             self.policies_t[i].load_state_dict(self.policies[i].state_dict())
             self.critics_t[i].load_state_dict(self.critics[i].state_dict())
@@ -72,12 +78,19 @@ class MADDPG(object):
             self.critic_optims[i] = optim.Adam(self.critics[i].parameters(), lr=self.lr)
             
             self.memories[i] = OffpolicyMemory(agent_ind=i, capacity=50000) 
+            obs_st_en = [ocum]
+            act_st_en = [acum]
+            obs_st_en.append(ocum + obs_size)
+            act_st_en.append(acum + num_action)
+            ocum = ocum + obs_size
+            acum = acum + num_action
+            self.obs_ind.append(obs_st_en)
+            self.act_ind.append(act_st_en)
             if self.use_gpu:
                 self.policies[i] = self.policies[i].cuda()
                 self.critics[i] = self.critics[i].cuda()
                 self.policies_t[i] = self.policies_t[i].cuda()
                 self.critics_t[i] = self.critics_t[i].cuda()
-        
         
     def act(self, _observations):
         pis = []
@@ -120,7 +133,7 @@ class MADDPG(object):
             masks = tr.from_numpy(masks).cuda().float().view(-1, 1)
             rews = tr.from_numpy(rews).cuda().float().view(-1, 1)
             q = c(states, all_acts)
-            acts_t = tr.cat([self.one_hot(pi(obss_next).detach()) for pi in self.policies_t], dim=-1)
+            acts_t = tr.cat([self.one_hot(pi(next_states[:, self.obs_ind[i][0]:self.obs_ind[i][1]].detach())) for i, pi in enumerate(self.policies_t)], dim=-1)
             q_t = c_t(next_states, acts_t).detach()
             target = q_t * self.gamma * (1 - masks) + rews
             target = target.float()
@@ -134,7 +147,7 @@ class MADDPG(object):
             # Update Policy
             pi = a(obss)
             pi_act = F.gumbel_softmax(pi, hard=True)
-            all_acts[:, self.num_action * ind:self.num_action * (ind + 1)] = pi_act
+            all_acts[:, self.act_ind[ind][0]:self.act_ind[ind][1]] = pi_act
             actor_loss = (pi**2).mean() * 1e-3 - c(states, all_acts).mean()
             a_o.zero_grad()
             actor_loss.backward()
