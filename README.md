@@ -10,4 +10,9 @@ TODO(3/3)
 - [ ] Add additional function tqdm
 - [ ] Add Evaluation Code and Load Model
 - [X] Finish MADDPG Trainer
+- [X] Finish COMA
+	- [ ] Make Structure of COMA
+	- [ ] Finish Critic Update
+	- [ ] Finish Actor Update
+	- [ ] Debug COMA
 - [ ] Start DIAYN
