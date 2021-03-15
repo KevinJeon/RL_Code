@@ -33,6 +33,7 @@ def parse_args():
     parser.add_argument('--save_freq', '-sf', default=100, type=int)
     parser.add_argument('--log_dir', '-l', default='./logs', type=str)
     parser.add_argument('--use_gpu', '-c', default=False, type=bool)
+    parser.add_argument('--render', '-r', default=False, type=bool)
     return parser.parse_args()
 
 def get_trainer(obs_size, num_agent, num_action, batch_size, trainer_name='maddpg', use_gpu=False):
@@ -91,7 +92,8 @@ def main(args):
                     writer.add_scalar('agent{}/actor_loss'.format(i), aloss, total_step)
                     writer.add_scalar('agent{}/critic_loss'.format(i), closs, total_step)
                 continue
-            env.render()
+            if args.render:
+                env.render()
         print('-'*10+'EPISODE END! REWARD :{} STEP : {}'.format(total_reward[0], total_step)+'-'*10)
         writer.add_scalar('Total_reward', total_reward[i], episode)
         if (episode % args.save_freq == 0) or (episode == args.num_episode - 1):
