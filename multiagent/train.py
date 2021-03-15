@@ -5,7 +5,7 @@ sys.path.append('../')
 from torch.utils.tensorboard import SummaryWriter
 from environment import MultiAgentEnv
 import scenarios as scenarios
-from model.maddpg import MADDPG
+from model.modified_maddpg import MADDPG
 from utils.replay_buffer import OffpolicyMemory
 import numpy as np
 from gym.spaces import Box, Discrete, MultiDiscrete
@@ -55,7 +55,7 @@ def main(args):
     total_step = 0
     writer = SummaryWriter(args.log_dir+'/{}'.format(st_time))
     obs_sizes = [obs.shape[0] for obs in env.observation_space]
-    num_actions = [act.n for act in env.action_space]
+    num_actions = [act.shape[0] if isinstance(act, Box) else act.n for act in env.action_space]
     trainer = get_trainer(obs_sizes, env.n, num_actions, args.batch_size, 'maddpg', args.use_gpu)
     for episode in range(args.num_episode):
         a_losses,c_losses = [[] for _ in range(env.n)], [[] for _ in range(env.n)]
