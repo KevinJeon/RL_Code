@@ -11,7 +11,7 @@ TODO(3/3)
 - [ ] Add Evaluation Code and Load Model
 - [X] Finish MADDPG Trainer
 - [X] Finish COMA
-	- [ ] Make Structure of COMA
+	- [X] Make Structure of COMA
 	- [ ] Finish Critic Update
 	- [ ] Finish Actor Update
 	- [ ] Debug COMA
